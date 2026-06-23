@@ -47,9 +47,10 @@ func NormalizeMessage(evt *events.Message) (model.Message, bool) {
 
 	if m.Media != nil {
 		raw, err := proto.Marshal(msg)
-		if err == nil {
-			m.RawProto = raw
+		if err != nil {
+			return model.Message{}, false
 		}
+		m.RawProto = raw
 	}
 	return m, true
 }

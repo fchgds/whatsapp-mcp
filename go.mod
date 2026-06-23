@@ -4,6 +4,7 @@ go 1.26.4
 
 require (
 	github.com/mdp/qrterminal/v3 v3.2.1
+	github.com/modelcontextprotocol/go-sdk v1.6.1
 	go.mau.fi/whatsmeow v0.0.0-20260622185415-5f04eac6dbbb
 	google.golang.org/protobuf v1.36.11
 	modernc.org/sqlite v1.52.0
@@ -19,7 +20,6 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/modelcontextprotocol/go-sdk v1.6.1 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/petermattis/goid v0.0.0-20260330135022-df67b199bc81 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect

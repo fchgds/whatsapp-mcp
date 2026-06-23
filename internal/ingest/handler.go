@@ -49,13 +49,18 @@ func (h *Handler) onMessage(evt *events.Message) {
 
 func parseHistoryInfo(wm *waWeb.WebMessageInfo) types.MessageInfo {
 	remoteJID := wm.GetKey().GetRemoteJID()
-	jid, _ := types.ParseJID(remoteJID)
+	chat, _ := types.ParseJID(remoteJID)
+	senderStr := remoteJID
+	if p := wm.GetKey().GetParticipant(); p != "" {
+		senderStr = p
+	}
+	sender, _ := types.ParseJID(senderStr)
 	return types.MessageInfo{
 		ID:        wm.GetKey().GetID(),
 		Timestamp: time.Unix(int64(wm.GetMessageTimestamp()), 0),
 		MessageSource: types.MessageSource{
-			Chat:   jid,
-			Sender: jid,
+			Chat:   chat,
+			Sender: sender,
 		},
 	}
 }

@@ -61,7 +61,7 @@ func (b *Backend) Download(ctx context.Context, req ipc.DownloadRequest) (ipc.Do
 
 func fileName(id, original, mimetype string) string {
 	if original != "" {
-		return original
+		return filepath.Base(original)
 	}
 	ext := ".bin"
 	if exts, _ := mime.ExtensionsByType(mimetype); len(exts) > 0 {

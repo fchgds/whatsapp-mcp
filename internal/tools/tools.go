@@ -230,6 +230,9 @@ func (t *Tools) resolveChat(chat string) (string, []ChatDTO, error) {
 	if err != nil {
 		return "", nil, err
 	}
+	if len(chats) == 0 {
+		return "", nil, fmt.Errorf("no encontré ningún chat que coincida con %q", chat)
+	}
 	if len(chats) == 1 {
 		return chats[0].JID, nil, nil
 	}
