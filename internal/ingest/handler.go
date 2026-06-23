@@ -2,7 +2,6 @@
 package ingest
 
 import (
-	"strings"
 	"time"
 
 	"go.mau.fi/whatsmeow/proto/waWeb"
@@ -50,13 +49,13 @@ func (h *Handler) onMessage(evt *events.Message) {
 
 func parseHistoryInfo(wm *waWeb.WebMessageInfo) types.MessageInfo {
 	remoteJID := wm.GetKey().GetRemoteJID()
-	user := strings.TrimSuffix(remoteJID, "@s.whatsapp.net")
+	jid, _ := types.ParseJID(remoteJID)
 	return types.MessageInfo{
 		ID:        wm.GetKey().GetID(),
 		Timestamp: time.Unix(int64(wm.GetMessageTimestamp()), 0),
 		MessageSource: types.MessageSource{
-			Chat:   types.NewJID(user, types.DefaultUserServer),
-			Sender: types.NewJID(user, types.DefaultUserServer),
+			Chat:   jid,
+			Sender: jid,
 		},
 	}
 }
