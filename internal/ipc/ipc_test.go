@@ -10,6 +10,9 @@ import (
 type fakeBackend struct{}
 
 func (fakeBackend) Status() Status { return Status{Connected: true, JID: "me@s.whatsapp.net"} }
+func (fakeBackend) SyncContacts(context.Context) (SyncContactsResult, error) {
+	return SyncContactsResult{Contacts: 2, Chats: 1}, nil
+}
 func (fakeBackend) Download(_ context.Context, r DownloadRequest) (DownloadResult, error) {
 	return DownloadResult{Files: []SavedFile{{Path: r.DestFolder + "/a.jpg", Mimetype: "image/jpeg", Size: 10}}}, nil
 }
@@ -35,6 +38,10 @@ func TestStatusAndDownloadRoundTrip(t *testing.T) {
 	res, err := c.Download(context.Background(), DownloadRequest{Chat: "x", DestFolder: "/tmp"})
 	if err != nil || len(res.Files) != 1 || res.Files[0].Path != "/tmp/a.jpg" {
 		t.Fatalf("download inesperado: %+v err=%v", res, err)
+	}
+	sync, err := c.SyncContacts(context.Background())
+	if err != nil || sync.Contacts != 2 || sync.Chats != 1 {
+		t.Fatalf("sync inesperado: %+v err=%v", sync, err)
 	}
 }
 

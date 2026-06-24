@@ -27,6 +27,12 @@ func (c *Client) Status(ctx context.Context) (Status, error) {
 	return st, err
 }
 
+func (c *Client) SyncContacts(ctx context.Context) (SyncContactsResult, error) {
+	var res SyncContactsResult
+	err := c.do(ctx, http.MethodPost, "/sync_contacts", nil, &res)
+	return res, err
+}
+
 func (c *Client) Download(ctx context.Context, req DownloadRequest) (DownloadResult, error) {
 	var res DownloadResult
 	err := c.do(ctx, http.MethodPost, "/download", req, &res)

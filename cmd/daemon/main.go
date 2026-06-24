@@ -45,10 +45,11 @@ func main() {
 			log.Printf("sync contacts: %v", err)
 			return
 		}
-		if err := st.SyncContactNames(names); err != nil {
+		contacts, chats, err := st.SyncContactNames(names)
+		if err != nil {
 			log.Printf("sync contact names: %v", err)
 		} else {
-			log.Printf("sync contacts: %d nombres actualizados", len(names))
+			log.Printf("sync contacts: %d contactos, %d chats actualizados", contacts, chats)
 		}
 	}()
 

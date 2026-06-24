@@ -8,6 +8,7 @@ import (
 
 type Backend interface {
 	Status() Status
+	SyncContacts(ctx context.Context) (SyncContactsResult, error)
 	Download(ctx context.Context, r DownloadRequest) (DownloadResult, error)
 }
 
@@ -24,6 +25,14 @@ func NewServer(token string, b Backend) http.Handler {
 	}
 	mux.HandleFunc("/status", auth(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, b.Status())
+	}))
+	mux.HandleFunc("/sync_contacts", auth(func(w http.ResponseWriter, r *http.Request) {
+		res, err := b.SyncContacts(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, res)
 	}))
 	mux.HandleFunc("/download", auth(func(w http.ResponseWriter, r *http.Request) {
 		var req DownloadRequest

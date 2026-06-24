@@ -23,3 +23,8 @@ type DownloadResult struct {
 	Files  []SavedFile `json:"files"`
 	Errors []string    `json:"errors"`
 }
+
+type SyncContactsResult struct {
+	Contacts int `json:"contacts"`
+	Chats    int `json:"chats"`
+}

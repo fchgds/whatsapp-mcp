@@ -15,6 +15,7 @@ import (
 
 type DaemonClient interface {
 	Status(ctx context.Context) (ipc.Status, error)
+	SyncContacts(ctx context.Context) (ipc.SyncContactsResult, error)
 	Download(ctx context.Context, req ipc.DownloadRequest) (ipc.DownloadResult, error)
 }
 
@@ -111,6 +112,30 @@ func (t *Tools) SearchContacts(ctx context.Context, _ *mcp.CallToolRequest, in S
 		out.Contacts = append(out.Contacts, ContactDTO{JID: c.JID, Name: c.Name, Phone: c.Phone})
 	}
 	return nil, out, nil
+}
+
+// ---- sync_contacts ----
+
+type SyncContactsIn struct{}
+type SyncContactsOut struct {
+	Contacts int    `json:"contacts"`
+	Chats    int    `json:"chats"`
+	Message  string `json:"message"`
+}
+
+func (t *Tools) SyncContacts(ctx context.Context, _ *mcp.CallToolRequest, _ SyncContactsIn) (*mcp.CallToolResult, SyncContactsOut, error) {
+	if _, err := t.requireConnected(ctx); err != nil {
+		return nil, SyncContactsOut{}, err
+	}
+	res, err := t.Daemon.SyncContacts(ctx)
+	if err != nil {
+		return nil, SyncContactsOut{}, err
+	}
+	return nil, SyncContactsOut{
+		Contacts: res.Contacts,
+		Chats:    res.Chats,
+		Message:  fmt.Sprintf("%d contactos sincronizados; %d chats actualizados", res.Contacts, res.Chats),
+	}, nil
 }
 
 // ---- list_chats ----

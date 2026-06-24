@@ -14,8 +14,14 @@ func (s *Store) UpsertChat(c model.Chat) error {
 		ON CONFLICT(jid) DO UPDATE SET
 			name=CASE WHEN excluded.name!='' THEN excluded.name ELSE chats.name END,
 			type=excluded.type,
-			last_message_text=excluded.last_message_text,
-			last_message_ts=excluded.last_message_ts`,
+			last_message_text=CASE
+				WHEN excluded.last_message_ts >= chats.last_message_ts THEN excluded.last_message_text
+				ELSE chats.last_message_text
+			END,
+			last_message_ts=CASE
+				WHEN excluded.last_message_ts >= chats.last_message_ts THEN excluded.last_message_ts
+				ELSE chats.last_message_ts
+			END`,
 		c.JID, c.Name, c.Type, c.LastMessageText, c.LastMessageTS.Unix())
 	return err
 }
@@ -41,14 +47,20 @@ func (s *Store) InsertMessage(m model.Message) error {
 	return err
 }
 
+func (s *Store) UpdateMessageRawProto(chatJID, id string, rawProto []byte) error {
+	_, err := s.db.Exec(`UPDATE messages SET raw_proto=? WHERE chat_jid=? AND id=?`, rawProto, chatJID, id)
+	return err
+}
+
 // SyncContactNames toma un mapa jid→nombre de la store interna de whatsmeow
 // y actualiza tanto contacts como chats que tengan name vacío.
-func (s *Store) SyncContactNames(names map[string]string) error {
+func (s *Store) SyncContactNames(names map[string]string) (int, int, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
-		return err
+		return 0, 0, err
 	}
 	defer tx.Rollback()
+	chatsUpdated := 0
 	for jid, name := range names {
 		phone := jid
 		if idx := len(jid) - len("@s.whatsapp.net"); idx > 0 && jid[idx:] == "@s.whatsapp.net" {
@@ -57,14 +69,21 @@ func (s *Store) SyncContactNames(names map[string]string) error {
 		if _, err := tx.Exec(`INSERT INTO contacts (jid,name,phone) VALUES (?,?,?)
 			ON CONFLICT(jid) DO UPDATE SET name=excluded.name, phone=excluded.phone`,
 			jid, name, phone); err != nil {
-			return err
+			return 0, 0, err
 		}
-		if _, err := tx.Exec(`UPDATE chats SET name=? WHERE jid=? AND (name IS NULL OR name='')`,
-			name, jid); err != nil {
-			return err
+		res, err := tx.Exec(`UPDATE chats SET name=? WHERE jid=? AND (name IS NULL OR name='')`,
+			name, jid)
+		if err != nil {
+			return 0, 0, err
+		}
+		if n, err := res.RowsAffected(); err == nil {
+			chatsUpdated += int(n)
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return 0, 0, err
+	}
+	return len(names), chatsUpdated, nil
 }
 
 func (s *Store) SearchContacts(query string, limit int) ([]model.Contact, error) {
@@ -87,9 +106,11 @@ func (s *Store) SearchContacts(query string, limit int) ([]model.Contact, error)
 }
 
 func (s *Store) ListChats(query string, limit int) ([]model.Chat, error) {
-	rows, err := s.db.Query(`SELECT jid,name,type,last_message_text,last_message_ts FROM chats
-		WHERE (?='' OR name LIKE ?) ORDER BY last_message_ts DESC LIMIT ?`,
-		query, "%"+query+"%", limit)
+	rows, err := s.db.Query(`SELECT chats.jid,COALESCE(NULLIF(chats.name,''),contacts.name,''),chats.type,chats.last_message_text,chats.last_message_ts
+		FROM chats LEFT JOIN contacts ON contacts.jid=chats.jid
+		WHERE (?='' OR COALESCE(NULLIF(chats.name,''),contacts.name,'') LIKE ? OR contacts.phone LIKE ? OR chats.jid LIKE ?)
+		ORDER BY chats.last_message_ts DESC LIMIT ?`,
+		query, "%"+query+"%", "%"+query+"%", "%"+query+"%", limit)
 	if err != nil {
 		return nil, err
 	}
@@ -98,9 +119,11 @@ func (s *Store) ListChats(query string, limit int) ([]model.Chat, error) {
 }
 
 func (s *Store) ResolveChats(nameOrJID string) ([]model.Chat, error) {
-	rows, err := s.db.Query(`SELECT jid,name,type,last_message_text,last_message_ts FROM chats
-		WHERE jid=? OR name LIKE ? ORDER BY last_message_ts DESC LIMIT 20`,
-		nameOrJID, "%"+nameOrJID+"%")
+	rows, err := s.db.Query(`SELECT chats.jid,COALESCE(NULLIF(chats.name,''),contacts.name,''),chats.type,chats.last_message_text,chats.last_message_ts
+		FROM chats LEFT JOIN contacts ON contacts.jid=chats.jid
+		WHERE chats.jid=? OR COALESCE(NULLIF(chats.name,''),contacts.name,'') LIKE ? OR contacts.phone LIKE ?
+		ORDER BY chats.last_message_ts DESC LIMIT 20`,
+		nameOrJID, "%"+nameOrJID+"%", "%"+nameOrJID+"%")
 	if err != nil {
 		return nil, err
 	}

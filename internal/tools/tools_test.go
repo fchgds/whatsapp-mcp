@@ -19,6 +19,10 @@ func (f fakeDaemon) Status(context.Context) (ipc.Status, error) {
 	return f.status, nil
 }
 
+func (f fakeDaemon) SyncContacts(context.Context) (ipc.SyncContactsResult, error) {
+	return ipc.SyncContactsResult{Contacts: 3, Chats: 2}, nil
+}
+
 func (f fakeDaemon) Download(context.Context, ipc.DownloadRequest) (ipc.DownloadResult, error) {
 	return ipc.DownloadResult{}, nil
 }
@@ -44,6 +48,17 @@ func TestSearchContactsHandler(t *testing.T) {
 	}
 	if len(out.Contacts) != 1 || out.Contacts[0].Name != "Fulano" {
 		t.Fatalf("esperaba Fulano, got %+v", out.Contacts)
+	}
+}
+
+func TestSyncContactsHandler(t *testing.T) {
+	tl := seededTools(t)
+	_, out, err := tl.SyncContacts(context.Background(), nil, SyncContactsIn{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Contacts != 3 || out.Chats != 2 {
+		t.Fatalf("sync inesperado: %+v", out)
 	}
 }
 
