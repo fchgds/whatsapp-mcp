@@ -51,7 +51,11 @@ func toChatDTO(c model.Chat) ChatDTO {
 }
 
 func toMessageDTO(m model.Message) MessageDTO {
-	d := MessageDTO{ID: m.ID, SenderJID: m.SenderJID, Timestamp: m.Timestamp.Format("2006-01-02 15:04"), Type: m.Type, Text: m.Text}
+	ts := "unknown"
+	if m.Timestamp.Unix() > 0 {
+		ts = m.Timestamp.Format("2006-01-02 15:04")
+	}
+	d := MessageDTO{ID: m.ID, SenderJID: m.SenderJID, Timestamp: ts, Type: m.Type, Text: m.Text}
 	if m.Media != nil {
 		d.HasMedia = true
 		d.Mimetype = m.Media.Mimetype

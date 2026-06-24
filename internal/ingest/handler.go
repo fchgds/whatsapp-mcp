@@ -4,6 +4,7 @@ package ingest
 import (
 	"time"
 
+	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/proto/waWeb"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -20,17 +21,57 @@ func (h *Handler) Handle(evt any) {
 	switch v := evt.(type) {
 	case *events.Message:
 		h.onMessage(v)
+	case *events.Contact:
+		h.onContact(v)
 	case *events.HistorySync:
 		for _, conv := range v.Data.GetConversations() {
-			for _, hm := range conv.GetMessages() {
-				wmsg := hm.GetMessage()
-				if wmsg == nil {
-					continue
-				}
-				h.onMessage(&events.Message{Info: parseHistoryInfo(wmsg), Message: wmsg.GetMessage()})
-			}
+			h.onHistoryConversation(conv)
 		}
 	}
+}
+
+func (h *Handler) onContact(evt *events.Contact) {
+	if evt.Action == nil {
+		return
+	}
+	name := evt.Action.GetFullName()
+	if name == "" {
+		name = evt.Action.GetFirstName()
+	}
+	_ = h.Store.UpsertContact(model.Contact{JID: evt.JID.String(), Name: name, Phone: evt.JID.User})
+}
+
+func (h *Handler) onHistoryConversation(conv *waHistorySync.Conversation) {
+	chatJID, _ := types.ParseJID(conv.GetID())
+	chatJIDStr := chatJID.String()
+	if chatJIDStr == "" {
+		return
+	}
+	name := conv.GetName()
+	var lastTS time.Time
+	var lastText string
+	for _, hm := range conv.GetMessages() {
+		wmsg := hm.GetMessage()
+		if wmsg == nil || wmsg.GetMessageTimestamp() == 0 {
+			continue
+		}
+		m, ok := NormalizeMessage(&events.Message{Info: parseHistoryInfo(wmsg), Message: wmsg.GetMessage()})
+		if !ok {
+			continue
+		}
+		_ = h.Store.InsertMessage(m)
+		if m.Timestamp.After(lastTS) {
+			lastTS = m.Timestamp
+			lastText = previewText(m)
+		}
+	}
+	_ = h.Store.UpsertChat(model.Chat{
+		JID:             chatJIDStr,
+		Name:            name,
+		Type:            chatType(chatJIDStr),
+		LastMessageText: lastText,
+		LastMessageTS:   lastTS,
+	})
 }
 
 func (h *Handler) onMessage(evt *events.Message) {
@@ -39,8 +80,13 @@ func (h *Handler) onMessage(evt *events.Message) {
 		return
 	}
 	_ = h.Store.InsertMessage(m)
+	name := ""
+	if chatType(m.ChatJID) == "individual" {
+		name = evt.Info.PushName
+	}
 	_ = h.Store.UpsertChat(model.Chat{
 		JID:             m.ChatJID,
+		Name:            name,
 		Type:            chatType(m.ChatJID),
 		LastMessageText: previewText(m),
 		LastMessageTS:   m.Timestamp,

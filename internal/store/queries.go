@@ -11,8 +11,11 @@ import (
 func (s *Store) UpsertChat(c model.Chat) error {
 	_, err := s.db.Exec(`INSERT INTO chats (jid,name,type,last_message_text,last_message_ts)
 		VALUES (?,?,?,?,?)
-		ON CONFLICT(jid) DO UPDATE SET name=excluded.name, type=excluded.type,
-			last_message_text=excluded.last_message_text, last_message_ts=excluded.last_message_ts`,
+		ON CONFLICT(jid) DO UPDATE SET
+			name=CASE WHEN excluded.name!='' THEN excluded.name ELSE chats.name END,
+			type=excluded.type,
+			last_message_text=excluded.last_message_text,
+			last_message_ts=excluded.last_message_ts`,
 		c.JID, c.Name, c.Type, c.LastMessageText, c.LastMessageTS.Unix())
 	return err
 }
@@ -36,6 +39,32 @@ func (s *Store) InsertMessage(m model.Message) error {
 		ON CONFLICT(id,chat_jid) DO NOTHING`,
 		m.ID, m.ChatJID, m.SenderJID, m.Timestamp.Unix(), m.Type, m.Text, mime, fname, size, m.RawProto)
 	return err
+}
+
+// SyncContactNames toma un mapa jid→nombre de la store interna de whatsmeow
+// y actualiza tanto contacts como chats que tengan name vacío.
+func (s *Store) SyncContactNames(names map[string]string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for jid, name := range names {
+		phone := jid
+		if idx := len(jid) - len("@s.whatsapp.net"); idx > 0 && jid[idx:] == "@s.whatsapp.net" {
+			phone = jid[:idx]
+		}
+		if _, err := tx.Exec(`INSERT INTO contacts (jid,name,phone) VALUES (?,?,?)
+			ON CONFLICT(jid) DO UPDATE SET name=excluded.name, phone=excluded.phone`,
+			jid, name, phone); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`UPDATE chats SET name=? WHERE jid=? AND (name IS NULL OR name='')`,
+			name, jid); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *Store) SearchContacts(query string, limit int) ([]model.Contact, error) {
@@ -121,7 +150,11 @@ func (s *Store) ListMedia(chatJID string, types []string, limit int) ([]model.Me
 
 func placeholders(n int) string { return strings.TrimSuffix(strings.Repeat("?,", n), ",") }
 
-func scanChats(rows interface{ Next() bool; Scan(...any) error; Err() error }) ([]model.Chat, error) {
+func scanChats(rows interface {
+	Next() bool
+	Scan(...any) error
+	Err() error
+}) ([]model.Chat, error) {
 	var out []model.Chat
 	for rows.Next() {
 		var c model.Chat
@@ -135,7 +168,11 @@ func scanChats(rows interface{ Next() bool; Scan(...any) error; Err() error }) (
 	return out, rows.Err()
 }
 
-func scanMessages(rows interface{ Next() bool; Scan(...any) error; Err() error }) ([]model.Message, error) {
+func scanMessages(rows interface {
+	Next() bool
+	Scan(...any) error
+	Err() error
+}) ([]model.Message, error) {
 	var out []model.Message
 	for rows.Next() {
 		var m model.Message

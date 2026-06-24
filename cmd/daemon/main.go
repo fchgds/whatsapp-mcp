@@ -39,6 +39,19 @@ func main() {
 		log.Fatalf("connect: %v", err)
 	}
 
+	go func() {
+		names, err := client.SyncContacts(ctx)
+		if err != nil {
+			log.Printf("sync contacts: %v", err)
+			return
+		}
+		if err := st.SyncContactNames(names); err != nil {
+			log.Printf("sync contact names: %v", err)
+		} else {
+			log.Printf("sync contacts: %d nombres actualizados", len(names))
+		}
+	}()
+
 	backend := &wa.Backend{Store: st, WA: client}
 	srv := &http.Server{Addr: fmt.Sprintf("127.0.0.1:%d", cfg.IPCPort), Handler: ipc.NewServer(cfg.IPCToken, backend)}
 	go func() {

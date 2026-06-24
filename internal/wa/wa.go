@@ -78,7 +78,7 @@ func (c *Client) Status() ipc.Status {
 	needQR := c.needQR
 	c.mu.Unlock()
 	st := ipc.Status{Connected: c.wm.IsConnected() && c.wm.IsLoggedIn(), NeedsQR: needQR}
-	if c.wm.Store.ID != nil {
+	if c.wm.Store != nil && c.wm.Store.ID != nil {
 		st.JID = c.wm.Store.ID.String()
 	}
 	return st
@@ -91,6 +91,31 @@ func (c *Client) DownloadAny(ctx context.Context, rawProto []byte) ([]byte, erro
 		return nil, err
 	}
 	return c.wm.DownloadAny(ctx, &msg)
+}
+
+// SyncContacts lee la store interna de whatsmeow y devuelve un mapa JID→nombre.
+func (c *Client) SyncContacts(ctx context.Context) (map[string]string, error) {
+	if c.wm.Store == nil || c.wm.Store.Contacts == nil {
+		return nil, nil
+	}
+	all, err := c.wm.Store.Contacts.GetAllContacts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(all))
+	for jid, info := range all {
+		name := info.FullName
+		if name == "" {
+			name = info.PushName
+		}
+		if name == "" {
+			name = info.BusinessName
+		}
+		if name != "" {
+			out[jid.String()] = name
+		}
+	}
+	return out, nil
 }
 
 var _ = events.Message{} // mantiene el import si se referencia en evolución
