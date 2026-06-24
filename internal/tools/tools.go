@@ -2,11 +2,13 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"whatsapp-mcp/internal/ipc"
+	"whatsapp-mcp/internal/launcher"
 	"whatsapp-mcp/internal/model"
 	"whatsapp-mcp/internal/store"
 )
@@ -16,9 +18,14 @@ type DaemonClient interface {
 	Download(ctx context.Context, req ipc.DownloadRequest) (ipc.DownloadResult, error)
 }
 
+type DaemonLauncher interface {
+	EnsureRunning(ctx context.Context) (ipc.Status, error)
+}
+
 type Tools struct {
-	Store  *store.Store
-	Daemon DaemonClient
+	Store    *store.Store
+	Daemon   DaemonClient
+	Launcher DaemonLauncher
 }
 
 // ---- DTOs de salida ----
@@ -70,17 +77,15 @@ type StatusOut struct {
 	Connected bool   `json:"connected"`
 	NeedsQR   bool   `json:"needs_qr"`
 	JID       string `json:"jid"`
+	Message   string `json:"message"`
 }
 
 func (t *Tools) GetConnectionStatus(ctx context.Context, _ *mcp.CallToolRequest, _ StatusIn) (*mcp.CallToolResult, StatusOut, error) {
-	if t.Daemon == nil {
-		return nil, StatusOut{}, fmt.Errorf("daemon no disponible: arrancá whatsapp-daemon.exe")
-	}
-	st, err := t.Daemon.Status(ctx)
+	st, err := t.ensureDaemon(ctx)
 	if err != nil {
-		return nil, StatusOut{}, fmt.Errorf("daemon no disponible: %w", err)
+		return nil, StatusOut{}, err
 	}
-	return nil, StatusOut{Connected: st.Connected, NeedsQR: st.NeedsQR, JID: st.JID}, nil
+	return nil, StatusOut{Connected: st.Connected, NeedsQR: st.NeedsQR, JID: st.JID, Message: statusMessage(st)}, nil
 }
 
 // ---- search_contacts ----
@@ -94,6 +99,9 @@ type SearchContactsOut struct {
 }
 
 func (t *Tools) SearchContacts(ctx context.Context, _ *mcp.CallToolRequest, in SearchContactsIn) (*mcp.CallToolResult, SearchContactsOut, error) {
+	if _, err := t.requireConnected(ctx); err != nil {
+		return nil, SearchContactsOut{}, err
+	}
 	cs, err := t.Store.SearchContacts(in.Query, limitOr(in.Limit, 20))
 	if err != nil {
 		return nil, SearchContactsOut{}, err
@@ -116,6 +124,9 @@ type ListChatsOut struct {
 }
 
 func (t *Tools) ListChats(ctx context.Context, _ *mcp.CallToolRequest, in ListChatsIn) (*mcp.CallToolResult, ListChatsOut, error) {
+	if _, err := t.requireConnected(ctx); err != nil {
+		return nil, ListChatsOut{}, err
+	}
 	cs, err := t.Store.ListChats(in.Query, limitOr(in.Limit, 20))
 	if err != nil {
 		return nil, ListChatsOut{}, err
@@ -140,6 +151,9 @@ type GetMessagesOut struct {
 }
 
 func (t *Tools) GetMessages(ctx context.Context, _ *mcp.CallToolRequest, in GetMessagesIn) (*mcp.CallToolResult, GetMessagesOut, error) {
+	if _, err := t.requireConnected(ctx); err != nil {
+		return nil, GetMessagesOut{}, err
+	}
 	jid, cands, err := t.resolveChat(in.Chat)
 	if err != nil {
 		return nil, GetMessagesOut{}, err
@@ -172,6 +186,9 @@ type ListMediaOut struct {
 }
 
 func (t *Tools) ListMedia(ctx context.Context, _ *mcp.CallToolRequest, in ListMediaIn) (*mcp.CallToolResult, ListMediaOut, error) {
+	if _, err := t.requireConnected(ctx); err != nil {
+		return nil, ListMediaOut{}, err
+	}
 	jid, cands, err := t.resolveChat(in.Chat)
 	if err != nil {
 		return nil, ListMediaOut{}, err
@@ -204,8 +221,8 @@ type DownloadMediaOut struct {
 }
 
 func (t *Tools) DownloadMedia(ctx context.Context, _ *mcp.CallToolRequest, in DownloadMediaIn) (*mcp.CallToolResult, DownloadMediaOut, error) {
-	if t.Daemon == nil {
-		return nil, DownloadMediaOut{}, fmt.Errorf("daemon no disponible: arrancá whatsapp-daemon.exe")
+	if _, err := t.requireConnected(ctx); err != nil {
+		return nil, DownloadMediaOut{}, err
 	}
 	if in.DestFolder == "" {
 		return nil, DownloadMediaOut{}, fmt.Errorf("dest_folder es obligatorio")
@@ -226,6 +243,44 @@ func limitOr(v, def int) int {
 		return def
 	}
 	return v
+}
+
+func (t *Tools) ensureDaemon(ctx context.Context) (ipc.Status, error) {
+	if t.Launcher != nil {
+		return t.Launcher.EnsureRunning(ctx)
+	}
+	if t.Daemon == nil {
+		return ipc.Status{}, fmt.Errorf("daemon no disponible: arranca whatsapp-daemon.exe")
+	}
+	st, err := t.Daemon.Status(ctx)
+	if err != nil {
+		return ipc.Status{}, fmt.Errorf("daemon no disponible: %w", err)
+	}
+	return st, nil
+}
+
+func (t *Tools) requireConnected(ctx context.Context) (ipc.Status, error) {
+	st, err := t.ensureDaemon(ctx)
+	if err != nil {
+		return ipc.Status{}, err
+	}
+	if st.Connected {
+		return st, nil
+	}
+	return st, errors.New(statusMessage(st))
+}
+
+func statusMessage(st ipc.Status) string {
+	switch {
+	case st.Connected && st.JID != "":
+		return "vinculado como " + st.JID
+	case st.Connected:
+		return "vinculado"
+	case st.NeedsQR:
+		return launcher.LinkingMessage()
+	default:
+		return "arrancando..."
+	}
 }
 
 // resolveChat devuelve (jid, nil) si hay match único; ("", candidatos) si es ambiguo.

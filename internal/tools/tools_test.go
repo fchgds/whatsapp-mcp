@@ -6,9 +6,22 @@ import (
 	"testing"
 	"time"
 
+	"whatsapp-mcp/internal/ipc"
 	"whatsapp-mcp/internal/model"
 	"whatsapp-mcp/internal/store"
 )
+
+type fakeDaemon struct {
+	status ipc.Status
+}
+
+func (f fakeDaemon) Status(context.Context) (ipc.Status, error) {
+	return f.status, nil
+}
+
+func (f fakeDaemon) Download(context.Context, ipc.DownloadRequest) (ipc.DownloadResult, error) {
+	return ipc.DownloadResult{}, nil
+}
 
 func seededTools(t *testing.T) *Tools {
 	t.Helper()
@@ -20,7 +33,7 @@ func seededTools(t *testing.T) *Tools {
 	_ = s.UpsertContact(model.Contact{JID: "5491111@s.whatsapp.net", Name: "Fulano", Phone: "5491111"})
 	_ = s.UpsertChat(model.Chat{JID: "5491111@s.whatsapp.net", Name: "Fulano", Type: "individual"})
 	_ = s.InsertMessage(model.Message{ID: "m1", ChatJID: "5491111@s.whatsapp.net", SenderJID: "5491111@s.whatsapp.net", Timestamp: time.Unix(1700000000, 0), Type: "text", Text: "hola"})
-	return &Tools{Store: s}
+	return &Tools{Store: s, Daemon: fakeDaemon{status: ipc.Status{Connected: true, JID: "5491111@s.whatsapp.net"}}}
 }
 
 func TestSearchContactsHandler(t *testing.T) {

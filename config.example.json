@@ -1,5 +1,6 @@
 {
   "data_dir": "data",
   "ipc_port": 8377,
-  "ipc_token": "CAMBIAME-por-un-token-aleatorio"
+  "ipc_token": "CAMBIAME-por-un-token-aleatorio",
+  "daemon_path": "whatsapp-daemon.exe"
 }

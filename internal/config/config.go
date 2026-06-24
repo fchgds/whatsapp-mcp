@@ -10,9 +10,10 @@ import (
 )
 
 type Config struct {
-	DataDir  string `json:"data_dir"`
-	IPCPort  int    `json:"ipc_port"`
-	IPCToken string `json:"ipc_token"`
+	DataDir    string `json:"data_dir"`
+	IPCPort    int    `json:"ipc_port"`
+	IPCToken   string `json:"ipc_token"`
+	DaemonPath string `json:"daemon_path,omitempty"`
 }
 
 func Load(path string) (Config, error) {

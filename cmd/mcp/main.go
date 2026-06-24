@@ -4,17 +4,21 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"whatsapp-mcp/internal/config"
 	"whatsapp-mcp/internal/ipc"
+	"whatsapp-mcp/internal/launcher"
 	"whatsapp-mcp/internal/store"
 	"whatsapp-mcp/internal/tools"
 )
 
 func main() {
-	cfg, err := config.Load("config.json")
+	configPath := "config.json"
+	cfg, err := config.Load(configPath)
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
@@ -25,7 +29,11 @@ func main() {
 	defer st.Close()
 
 	daemon := &ipc.Client{BaseURL: cfg.BaseURL(), Token: cfg.IPCToken, HTTP: http.DefaultClient}
-	t := &tools.Tools{Store: st, Daemon: daemon}
+	workDir := configWorkDir(configPath)
+	daemonPath := resolveDaemonPath(cfg, workDir)
+	l := &launcher.Launcher{DaemonPath: daemonPath, WorkDir: workDir, Client: daemon}
+	defer l.Close()
+	t := &tools.Tools{Store: st, Daemon: daemon, Launcher: l}
 
 	server := mcp.NewServer(&mcp.Implementation{Name: "whatsapp-mcp", Version: "v0.1.0"}, nil)
 	mcp.AddTool(server, &mcp.Tool{Name: "get_connection_status", Description: "Estado de la conexión a WhatsApp (conectado, necesita QR, número vinculado)"}, t.GetConnectionStatus)
@@ -38,4 +46,26 @@ func main() {
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func configWorkDir(configPath string) string {
+	abs, err := filepath.Abs(configPath)
+	if err != nil {
+		return "."
+	}
+	return filepath.Dir(abs)
+}
+
+func resolveDaemonPath(cfg config.Config, workDir string) string {
+	if cfg.DaemonPath != "" {
+		if filepath.IsAbs(cfg.DaemonPath) {
+			return cfg.DaemonPath
+		}
+		return filepath.Join(workDir, cfg.DaemonPath)
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return filepath.Join(workDir, "whatsapp-daemon.exe")
+	}
+	return filepath.Join(filepath.Dir(exe), "whatsapp-daemon.exe")
 }
